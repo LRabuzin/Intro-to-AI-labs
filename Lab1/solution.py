@@ -1,5 +1,8 @@
+import argparse
+
+
 class StateSpace:
-    def __init__(self, file_statespace, file_heuristic):
+    def __init__(self, file_statespace, file_heuristic=""):
         self.file_statespace = file_statespace
         self.file_heuristic = file_heuristic
 
@@ -16,13 +19,14 @@ class StateSpace:
                     self.transitions.setdefault(
                         transition[0][:-1], []).append((child[0], float(child[1])))
 
-        with open(file_heuristic, "r") as input_file2:
-            self.heuristic = dict()
-            for line in input_file2.readlines():
-                if line[0] == "#":
-                    continue
-                pair = line.strip().split(": ")
-                self.heuristic[pair[0]] = float(pair[1])
+        if file_heuristic:
+            with open(file_heuristic, "r") as input_file2:
+                self.heuristic = dict()
+                for line in input_file2.readlines():
+                    if line[0] == "#":
+                        continue
+                    pair = line.strip().split(": ")
+                    self.heuristic[pair[0]] = float(pair[1])
 
     @staticmethod
     def readline_clean(input_file):
@@ -142,6 +146,9 @@ class StateSpace:
         return node[0] + self.heuristic[node[1]]
 
     def determine_optimism(self):
+        if not self.file_heuristic:
+            print("# HEURISTIC-OPTIMISTIC HEURISTIC NOT DEFINED")
+            return
         print("# HEURISTIC-OPTIMISTIC {}".format(self.file_heuristic))
         conclusion = True
         for state in sorted(self.heuristic.keys()):
@@ -157,6 +164,9 @@ class StateSpace:
         return conclusion
 
     def determine_consistency(self):
+        if not self.file_heuristic:
+            print("# HEURISTIC-CONSISTENT HEURISTIC NOT DEFINED")
+            return
         print(f"# HEURISTIC-CONSISTENT {self.file_heuristic}")
         conclusion = True
         for transitionset in sorted(self.transitions.items()):
@@ -175,11 +185,33 @@ class StateSpace:
         return conclusion
 
 
+def main():
+    parser = argparse.ArgumentParser(
+        description="Search the state space of a problem")
+    parser.add_argument("--alg", type=str, required=True, choices=["astar", "ucs", "bfs"],
+                        help="search algorithm used", metavar="algorithm")
+    parser.add_argument("--ss", type=str, required=True,
+                        help="state space descriptor file", metavar="statespace")
+    parser.add_argument("--h", type=str, required=False,
+                        help="heuristic descriptor file", metavar="heuristic")
+    parser.add_argument("--check-optimistic", required=False, action='store_true',
+                        help="check whether the heuristic is optimistic")
+    parser.add_argument("--check-consistent", required=False, action='store_true',
+                        help="check whether the heuristic is optimistic")
+    args = parser.parse_args()
+
+    problem = StateSpace(args.ss, args.h)
+    if args.alg == "astar":
+        problem.a_star()
+    elif args.alg == "bfs":
+        problem.bfs()
+    elif args.alg == "ucs":
+        problem.ucs()
+    if args.check_optimistic:
+        problem.determine_optimism()
+    if args.check_consistent:
+        problem.determine_consistency()
+
+
 if __name__ == "__main__":
-    problem = StateSpace("./lab1_files/maps/3x3_puzzle.txt",
-                         "./lab1_files/maps/3x3_misplaced_heuristic.txt")
-    problem.bfs()
-    problem.ucs()
-    problem.a_star()
-    problem.determine_optimism()
-    problem.determine_consistency()
+    main()
