@@ -1,4 +1,30 @@
 import argparse
+from queue import PriorityQueue
+
+
+class Node:
+    def __init__(self, parent, name, transition_cost, heuristic=None):
+        if parent:
+            self.cost = parent.cost + transition_cost
+            self.parent_name = parent.name
+        else:
+            self.cost = 0
+            self.parent_name = "#"
+        self.name = name
+        self.heuristic = heuristic
+
+    def __lt__(self, node2):
+        if self.heuristic:
+            if (self.cost + self.heuristic[self.name]) == (node2.cost + self.heuristic[node2.name]):
+                return self.name < node2.name
+            return (self.cost + self.heuristic[self.name]) < (node2.cost + self.heuristic[node2.name])
+        else:
+            if self.cost == node2.cost:
+                return self.name < node2.name
+            return self.cost < node2.cost
+
+    def __eq__(self, node2):
+        return self.name == node2.name and self.cost == node2.cost
 
 
 class StateSpace:
@@ -42,28 +68,20 @@ class StateSpace:
         ret += "Heuristic: {}\n".format(str(self.heuristic))
         return ret
 
-    @staticmethod
-    def initial(state):
-        return (0, state, "#")
-
-    @staticmethod
-    def node(curr, following, cost):
-        return (curr[0]+cost, following, curr[1])
-
     def bfs_traverse(self, begin):
-        opened = [self.initial(begin)]
+        opened = [Node(False, begin, 0)]
         closed = dict()
         while opened:
             n = opened.pop(0)
-            if n[1] in closed.keys():
+            if n.name in closed.keys():
                 continue
-            closed[n[1]] = (n[2], n[0])
-            if n[1] in self.goals:
+            closed[n.name] = (n.parent_name, n.cost)
+            if n.name in self.goals:
                 return (n, closed)
-            for child in sorted(self.transitions[n[1]], key=lambda following: following[0]):
+            for child in sorted(self.transitions[n.name], key=lambda following: following[0]):
                 if child[0] in closed.keys():
                     continue
-                opened.append(self.node(n, child[0], child[1]))
+                opened.append(Node(n, child[0], child[1]))
         return (False, dict())
 
     @staticmethod
@@ -82,9 +100,9 @@ class StateSpace:
             return
         print("[FOUND_SOLUTION]: yes")
         print("[STATES_VISITED]: {}".format(len(res[1])))
-        path_res = self.path(res[0][1], res[1])
+        path_res = self.path(res[0].name, res[1])
         print("[PATH_LENGTH]: {}".format(len(path_res)))
-        print("[TOTAL_COST]: {}".format(res[0][0]))
+        print("[TOTAL_COST]: {}".format(res[0].cost))
         print("[PATH]: {}".format(" => ".join(path_res)))
 
     def bfs(self):
@@ -92,20 +110,20 @@ class StateSpace:
         self.output(self.bfs_traverse(self.init))
 
     def ucs_traverse(self, begin):
-        opened = [self.initial(begin)]
+        opened = PriorityQueue()
+        opened.put(Node(False, begin, 0))
         closed = dict()
         while opened:
-            n = opened.pop(0)
-            if n[1] in closed.keys():
+            n = opened.get()
+            if n.name in closed.keys():
                 continue
-            closed[n[1]] = (n[2], n[0])
-            if n[1] in self.goals:
+            closed[n.name] = (n.parent_name, n.cost)
+            if n.name in self.goals:
                 return (n, closed)
-            for child in self.transitions[n[1]]:
+            for child in self.transitions[n.name]:
                 if child[0] in closed.keys():
                     continue
-                opened.append(self.node(n, child[0], child[1]))
-            opened = sorted(opened, key=lambda t: (t[0], t[1]))
+                opened.put(Node(n, child[0], child[1]))
         return (False, dict())
 
     def ucs(self):
@@ -113,29 +131,24 @@ class StateSpace:
         self.output(self.ucs_traverse(self.init))
 
     def a_star_traverse(self, begin):
-        opened = [self.initial(begin)]
+        opened = PriorityQueue()
+        opened.put(Node(False, begin, 0, self.heuristic))
         closed = dict()
         while opened:
-            n = opened.pop(0)
-            closed[n[1]] = (n[2], n[0])
-            if n[1] in self.goals:
+            n = opened.get()
+            if n.name in closed.keys():
+                continue
+            closed[n.name] = (n.parent_name, n.cost)
+            if n.name in self.goals:
                 return (n, closed)
-            for child in self.transitions[n[1]]:
-                child_node = self.node(n, child[0], child[1])
-                if child_node[1] in closed.keys():
-                    if closed[child_node[1]][1] < child_node[0]:
+            for child in self.transitions[n.name]:
+                child_node = Node(n, child[0], child[1], self.heuristic)
+                if child_node.name in closed.keys():
+                    if closed[child_node.name][1] < child_node.cost:
                         continue
                     else:
-                        closed.pop(child_node[1])
-                same_ind = next((i for i in range(len(opened))
-                                 if opened[i][1] == child_node[1]), -1)
-                if same_ind != -1:
-                    if opened[same_ind][0] < child_node[0]:
-                        continue
-                    else:
-                        opened.pop(same_ind)
-                opened.append(self.node(n, child[0], child[1]))
-            opened = sorted(opened, key=lambda t: (self.pred_cost(t), t[1]))
+                        closed.pop(child_node.name)
+                opened.put(Node(n, child[0], child[1], self.heuristic))
         return (False, dict())
 
     def a_star(self):
@@ -152,43 +165,41 @@ class StateSpace:
         print("# HEURISTIC-OPTIMISTIC {}".format(self.file_heuristic))
         conclusion = True
         for state in sorted(self.heuristic.keys()):
-            h_star = self.ucs_traverse(state)[0][0]
+            h_star = self.ucs_traverse(state)[0].cost
             res = self.heuristic[state] <= h_star
             conclusion = conclusion and res
-            print(
-                f"[CONDITION]: {'[OK]' if res else '[ERR]'} h({state}) <= h*: {self.heuristic[state]} <= {h_star}")
+            print("[CONDITION]: {} h({}) <= h*: {} <= {}".format('[OK]' if res else '[ERR]', state, self.heuristic[state], float(h_star)))
         if conclusion:
-            print("[CONCLUSION]: Heuristic is optimistic")
+            print("[CONCLUSION]: Heuristic is optimistic.")
         else:
-            print("[CONCLUSION]: Heuristic is not optimistic")
+            print("[CONCLUSION]: Heuristic is not optimistic.")
         return conclusion
 
     def determine_consistency(self):
         if not self.file_heuristic:
             print("# HEURISTIC-CONSISTENT HEURISTIC NOT DEFINED")
             return
-        print(f"# HEURISTIC-CONSISTENT {self.file_heuristic}")
+        print("# HEURISTIC-CONSISTENT {}".format(self.file_heuristic))
         conclusion = True
         for transitionset in sorted(self.transitions.items()):
             state1 = transitionset[0]
             for transition in sorted(transitionset[1]):
                 cost = transition[1]
                 state2 = transition[0]
-                res = self.heuristic[state1] <= self.heuristic[state2] + cost
+                res = self.heuristic[state1] <= (self.heuristic[state2] + cost)
                 conclusion = conclusion and res
-                print(
-                    f"[CONDITION]: {'[OK]' if res else '[ERR]'} h({state1}) <= h({state2}) + c: {self.heuristic[state1]} <= {self.heuristic[state2]} + {cost}")
+                print("[CONDITION]: {} h({}) <= h({}) + c: {} <= {} + {}".format('[OK]' if res else '[ERR]',state1, state2, self.heuristic[state1], self.heuristic[state2], cost))
         if conclusion:
-            print("[CONCLUSION]: Heuristic is consistent")
+            print("[CONCLUSION]: Heuristic is consistent.")
         else:
-            print("[CONCLUSION]: Heuristic is not consistent")
+            print("[CONCLUSION]: Heuristic is not consistent.")
         return conclusion
 
 
 def main():
     parser = argparse.ArgumentParser(
         description="Search the state space of a problem")
-    parser.add_argument("--alg", type=str, required=True, choices=["astar", "ucs", "bfs"],
+    parser.add_argument("--alg", type=str, required=False, choices=["astar", "ucs", "bfs"],
                         help="search algorithm used", metavar="algorithm")
     parser.add_argument("--ss", type=str, required=True,
                         help="state space descriptor file", metavar="statespace")
