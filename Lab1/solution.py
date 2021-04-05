@@ -73,13 +73,13 @@ class StateSpace:
         closed = dict()
         while opened:
             n = opened.pop(0)
-            if n.name in closed.keys():
+            if n.name in closed:
                 continue
             closed[n.name] = (n.parent_name, n.cost)
             if n.name in self.goals:
                 return (n, closed)
             for child in sorted(self.transitions[n.name], key=lambda following: following[0]):
-                if child[0] in closed.keys():
+                if child[0] in closed:
                     continue
                 opened.append(Node(n, child[0], child[1]))
         return (False, dict())
@@ -115,13 +115,13 @@ class StateSpace:
         closed = dict()
         while opened:
             n = opened.get()
-            if n.name in closed.keys():
+            if n.name in closed:
                 continue
             closed[n.name] = (n.parent_name, n.cost)
             if n.name in self.goals:
                 return (n, closed)
             for child in self.transitions[n.name]:
-                if child[0] in closed.keys():
+                if child[0] in closed:
                     continue
                 opened.put(Node(n, child[0], child[1]))
         return (False, dict())
@@ -136,14 +136,14 @@ class StateSpace:
         closed = dict()
         while opened:
             n = opened.get()
-            if n.name in closed.keys():
+            if n.name in closed:
                 continue
             closed[n.name] = (n.parent_name, n.cost)
             if n.name in self.goals:
                 return (n, closed)
             for child in self.transitions[n.name]:
                 child_node = Node(n, child[0], child[1], self.heuristic)
-                if child_node.name in closed.keys():
+                if child_node.name in closed:
                     if closed[child_node.name][1] < child_node.cost:
                         continue
                     else:
