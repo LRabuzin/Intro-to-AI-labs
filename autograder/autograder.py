@@ -368,7 +368,7 @@ def execute(path_to_solution, language, arguments):
 
   # Determine run command based on language
   if language == 'python':
-    ex_cmd = 'python solution.py'
+    ex_cmd = 'python3 solution.py'
     command = ex_cmd + ' ' + arguments
 
   elif language == 'java':
