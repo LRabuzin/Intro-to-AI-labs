@@ -47,7 +47,6 @@ class Clause:
             self.parents = set([parent1, parent2])
         else:
             self.parents = set()
-        self.children = set()
         self.literals = set()
         if line is not None:
             line = line.strip().lower().split(" v ")
@@ -81,15 +80,7 @@ class Clause:
         for literal in self.literals:
             new_literal = Literal(repr(literal))
             new_literal.negate()
-            if self.parents:
-                parent1 = self.parents.pop()
-                parent2 = self.parents.pop()
-                self.parents.add(parent1)
-                self.parents.add(parent2)
-            else:
-                parent1 = None
-                parent2 = None
-            res.add(Clause(repr(new_literal), parent1=parent1, parent2=parent2))
+            res.add(Clause(repr(new_literal)))
         return res
     
     def set_num(self, n):
@@ -124,20 +115,18 @@ class Clause:
             return Clause()
         if len(self) == 1 and len(other) == 1:
             return Clause(parent1 = self, parent2 = other, is_nil = True)
-        new_clause = self.literals.copy().union(other.literals)
+        new_clause = self.literals.union(other.literals)
         new_clause.remove(compl_intersection)
         new_clause.remove(compl_intersection.negate())
         res = Clause(parent1=self, parent2=other)
         res.set_literals(new_clause)
-        # print(f"Got {res} from {self} and {other}")
-        self.children.add(res)
-        other.children.add(res)
         return res
 
 class KnowledgeBase:
     def __init__(self, list_of_clauses = None, user_commands = None):
         self.base = set()
         self.goal = None
+        self.removed = set()
         if list_of_clauses is not None:
             with open(list_of_clauses, 'r') as f:
                 lines = readlines_clean(f)
@@ -155,12 +144,9 @@ class KnowledgeBase:
             for inner in self.base:
                 if outer != inner:
                     if outer.subsumes(inner):
-                        # for child in inner.children:
-                        #     child.switch_parent(inner, outer)
-                        #     print(f"Switched parent for {child}:\n  {inner} with {outer}")
-                        # outer.children.update(inner.children)
                         to_remove.add(inner)
         self.base = self.base.difference(to_remove)
+        self.removed.update(to_remove)
 
     def update(self, new_set):
         self.base.update(new_set)
@@ -174,14 +160,18 @@ class KnowledgeBase:
                 c = outer|inner
                 if c.nil:
                     return c, sos, negated_goal
-                if not c.is_empty():
+                if not c.is_empty() and not c in self.removed:
+                    subsumed = False
                     for clause in sos.base.union(negated_goal).union(self.base):
-                        if not clause.subsumes(c):
-                            new.add(c)
+                        if clause.subsumes(c):
+                            subsumed = True
+                            break
+                    if not subsumed:
+                        new.add(c)
         if new.issubset(sos.base.union(negated_goal).union(self.base)):
             return None, None, None
         sos.update(new)
-        # sos.deletion()
+        sos.deletion()
         while True:
             new = set()
             for outer in sorted(list(sos.base), key = len):
@@ -189,23 +179,31 @@ class KnowledgeBase:
                     c = outer|inner
                     if c.nil:
                         return c, sos, negated_goal
-                    if not c.is_empty():
+                    if not c.is_empty() and not c in self.removed:
+                        subsumed = False
                         for clause in sos.base.union(negated_goal).union(self.base):
-                            if not clause.subsumes(c):
-                                new.add(c)
+                            if clause.subsumes(c):
+                                subsumed = True
+                                break
+                        if not subsumed:
+                            new.add(c)
             for outer in sorted(list(sos.base), key = len):
                 for inner in sorted(list(self.base), key = len):
                     c = outer|inner
                     if c.nil:
                         return c, sos, negated_goal
-                    if not c.is_empty():
+                    if not c.is_empty() and not c in self.removed:
+                        subsumed = False
                         for clause in sos.base.union(negated_goal).union(self.base):
-                            if not clause.subsumes(c):
-                                new.add(c)
+                            if clause.subsumes(c):
+                                subsumed = True
+                                break
+                        if not subsumed:
+                            new.add(c)
             if new.issubset(sos.base.union(negated_goal).union(self.base)):
                 return None, None, None
             sos.update(new)
-            # sos.deletion()
+            sos.deletion()
         
     def resolve(self):
         res, support, negated_goal = self.resolution()
