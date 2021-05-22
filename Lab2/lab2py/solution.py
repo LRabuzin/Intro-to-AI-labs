@@ -38,13 +38,14 @@ class Literal:
         ret += self.name
         return ret
     
+    # defined the hash function so that the Literal can be part of a set
     def __hash__(self):
         return hash(repr(self))
 
 class Clause:
     def __init__(self, line = None, parent1 = None, parent2 = None, is_nil = False):
-        self.nil = is_nil
-        self.num = None
+        self.nil = is_nil # only set to nil if resolvent is NIL
+        self.num = None # used when reconstructing the steps that led to a conclusion
         if parent1 is not None or parent2 is not None:
             self.parents = set([parent1, parent2])
         else:
@@ -70,13 +71,11 @@ class Clause:
     def is_irrelevant(self):
         return self.is_empty() or self.is_tautology()
     
+    # returns boolean of whether the clause subsumes another clause (used in deletion strategy)
     def subsumes(self, other):
         return self.literals.issubset(other.literals)
     
-    def switch_parent(self, original, subsequent):
-        self.parents.remove(original)
-        self.parents.add(subsequent)
-    
+    # returns negated clause (set of negated literals as separate clauses), used for refutation
     def negate(self):
         res = set()
         for literal in self.literals:
@@ -99,24 +98,25 @@ class Clause:
             return "NIL"
         return " v ".join(sorted([str(item) for item in self.literals]))
     
+    # defined the hash function so that the Clause can be part of a set
     def __hash__(self):
         return hash(repr(self))
     
     #| operator represents resolution of two clauses, empty resolvent means tautology or impossible resolution
     def __or__(self, other):
-        compl_intersection = None
-        intersections = 0
+        compl_intersection = None # literal that appears in both clauses but is negated in one
+        intersections = 0 # number of such literals
         for literal in self.literals:
             temp = Literal(repr(literal))
             temp.negate()
             if temp in other.literals:
                 compl_intersection = Literal(repr(literal))
-                if intersections != 0:
+                if intersections != 0: # if we have found more than one complementary literal, the result is a tautology
                     return Clause()
                 intersections += 1
-        if compl_intersection is None:
+        if compl_intersection is None: # if we don't find a complementary literal, the resolution is not valid
             return Clause()
-        if len(self) == 1 and len(other) == 1:
+        if len(self) == 1 and len(other) == 1: # if we find a complementary literal and both clauses are unit clauses, we get NIL
             return Clause(parent1 = self, parent2 = other, is_nil = True)
         new_clause = self.literals.union(other.literals)
         new_clause.remove(compl_intersection)
@@ -125,18 +125,19 @@ class Clause:
         res.set_literals(new_clause)
         return res
 
+# Class that models the knowledge base for our problem
 class KnowledgeBase:
     def __init__(self, list_of_clauses = None, user_commands = None):
         self.base = set()
         self.goal = None
-        self.removed = set()
-        if list_of_clauses is not None and user_commands is None:
+        self.removed = set() # set of clauses that were removed by the deletion strategy, used for avoiding infinite loops
+        if list_of_clauses is not None and user_commands is None: # resolution
             with open(list_of_clauses, 'r') as f:
                 lines = readlines_clean(f)
                 self.goal = Clause(lines.pop())
                 for line in lines:
                     self.base.add(Clause(line))
-        elif list_of_clauses is not None and user_commands is not None:
+        elif list_of_clauses is not None and user_commands is not None: # cooking
             self.commands = []
             with open(list_of_clauses, 'r') as f:
                 lines = readlines_clean(f)
@@ -153,10 +154,10 @@ class KnowledgeBase:
     # method that implements deletion strategy
     def deletion(self):
         to_remove = set()
-        for clause in self.base:
+        for clause in self.base: # removing irrelevant clauses
             if clause.is_irrelevant():
                 to_remove.add(clause)
-        for outer in self.base:
+        for outer in self.base: # removing redundant clauses
             for inner in self.base:
                 if outer != inner:
                     if outer.subsumes(inner):
@@ -172,8 +173,8 @@ class KnowledgeBase:
         sos = KnowledgeBase()
         negated_goal = self.goal.negate()
         new = set()
-        for outer in sorted(list(negated_goal), key = len):
-            for inner in sorted(list(self.base), key = len):
+        for outer in sorted(list(negated_goal), key = len): # first step of building set of support
+            for inner in sorted(list(self.base.union(negated_goal)), key = len):
                 c = outer|inner
                 if c.nil:
                     return c, sos, negated_goal
@@ -189,7 +190,7 @@ class KnowledgeBase:
             return None, None, None
         sos.update(new)
         sos.deletion()
-        while True:
+        while True: # subsequent steps of resolution, we expand the sos and delete irrelevant and redundant clauses in each step
             new = set()
             for outer in sorted(list(sos.base), key = len):
                 for inner in sorted(list(sos.base), key = len):
@@ -205,7 +206,7 @@ class KnowledgeBase:
                         if not subsumed:
                             new.add(c)
             for outer in sorted(list(sos.base), key = len):
-                for inner in sorted(list(self.base), key = len):
+                for inner in sorted(list(self.base.union(negated_goal)), key = len):
                     c = outer|inner
                     if c.nil:
                         return c, sos, negated_goal
